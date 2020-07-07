@@ -12,16 +12,16 @@
 #define LOGURU_IMPLEMENTATION 1
 #include "loguru.h"
 
-// in mm
-const float pent_base = 537.0;
-const float pent_nib = 179.0;
-const float pent_shift = 101.6;
-const int n_clusters_to_gen = 200;
+
+const float pent_base = 537.0; // in mm
+const float pent_nib = 179.0; // in mm
+const float pent_shift = 101.6; // in mm
+const int n_clusters_to_gen = 200; // Number of clusters in this "event"
 const float noise_prob = 0.7; // 0 -1, 1 is max noise
-const float noise_level = 10; // ADC
-const float strip_pitch = 3.2;
+const float noise_level = 10; // in ADC units (pre integration)
+const float strip_pitch = 3.2; // digitize strip pitch
 const size_t sat_above = 1024; // ADC
-const float cluster_max_adc = 300; // ADC
+const float cluster_max_adc = 300; // ADC (pre integration)
 
 TF1 * fClusterProfile = nullptr;
 
@@ -124,7 +124,7 @@ int main( int argc, char** argv ){
     hist["hGEN0"] = new TH2F( "hGEN0", ";x;y", 1400, -700, 700, 1200, -600, 600 );
     hist["hGEN1"] = new TH2F( "hGEN1", ";x;y", 1400, -700, 700, 1200, -600, 600 );
     hist["hGEN2"] = new TH2F( "hGEN2", ";x;y", 1400, -700, 700, 1200, -600, 600 );
-    hist["hDIG"] = new TH2F( "hDIG", ";x;y", 400, -200, 200, 400, -200, 200 );
+    hist["hDIG0"] = new TH2F( "hDIG0", ";strip x; strip y", 400, -200, 200, 400, -200, 200 );
 
     fClusterProfile = new TF1( "fClusterProfile", "gaus" );
     fClusterProfile->SetParameters( 1.0, 0, 1.4 * 3.2 );
@@ -149,7 +149,7 @@ int main( int argc, char** argv ){
                 ((TH2*)hist["hGEN2"])->Fill( rx, ry,  nv );
                 int sx = -1, sy = -1;
                 map_to_strip( rx, ry, sx, sy );
-                ((TH2*)hist["hDIG"])->Fill( sx, sy, nv );
+                ((TH2*)hist["hDIG0"])->Fill( sx, sy, nv );
             }
 
             
@@ -165,20 +165,21 @@ int main( int argc, char** argv ){
         float ry = gRandom->Rndm() * 1200 - 600;
         if ( in_bounds_quad( rx, ry ) > 0 ){
             ((TH2*)hist["hGEN0"])->Fill( rx, ry, 1 );
-            fill_cluster_GEN( rx, ry, (TH2*)hist["hGEN1"], (TH2*)hist["hDIG"] );
+            fill_cluster_GEN( rx, ry, (TH2*)hist["hGEN1"], (TH2*)hist["hDIG0"] );
             nClusters++;
         }
     }
 
     hist["hGEN2"]->Add( hist["hGEN1"] );
 
+    hist["hDIG1"] = (TH2*)(hist["hDIG0"]->Clone("hDIG1"));
     // check all the bins of hhDIG and apply saturation
-    for ( int ix = 1; ix < hist["hDIG"]->GetXaxis()->GetNbins(); ix++ ){
-        for ( int iy = 1; iy < ((TH2*)hist["hDIG"])->GetYaxis()->GetNbins(); iy++ ){
-            float bv = ((TH2*)hist["hDIG"])->GetBinContent( ix, iy );
+    for ( int ix = 1; ix < hist["hDIG1"]->GetXaxis()->GetNbins(); ix++ ){
+        for ( int iy = 1; iy < ((TH2*)hist["hDIG1"])->GetYaxis()->GetNbins(); iy++ ){
+            float bv = ((TH2*)hist["hDIG1"])->GetBinContent( ix, iy );
             if ( bv >= sat_above ){
-                ((TH2*)hist["hDIG"])->SetBinContent( ix, iy, sat_above );
-                ((TH2*)hist["hDIG"])->SetBinError( ix, iy, 0.001 );
+                ((TH2*)hist["hDIG1"])->SetBinContent( ix, iy, sat_above );
+                ((TH2*)hist["hDIG1"])->SetBinError( ix, iy, 0.001 );
             }
         }
     }

@@ -2,3 +2,4 @@ sim
 everything.log
 *.o
 *.root
+*.png

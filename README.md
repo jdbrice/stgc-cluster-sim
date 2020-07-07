@@ -22,4 +22,5 @@ Produces `output.root` that contains:
 - `hGEN0` - true positions of the center of clusters
 - `hGEN1` - clusters with realistic sigma
 - `hGEN2` - clusters with realistic sigma + noise
-- `hDIG`  - clusters with realistic sigma + noise digitized (to XY strip level) 
+- `hDIG0` - clusters with realistic sigma + noise digitized (to XY strip level) 
+- `hDIG1` - clusters with realistic sigma + noise digitized (to XY strip level) + apply saturation
