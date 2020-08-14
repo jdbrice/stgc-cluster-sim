@@ -5,6 +5,7 @@
 #include "TH1F.h"
 #include "TF1.h"
 #include "TRandom3.h"
+#include "TGraph.h"
 
 #include <iostream>
 #include <map>
@@ -16,7 +17,7 @@
 const float pent_base = 537.0; // in mm
 const float pent_nib = 179.0; // in mm
 const float pent_shift = 101.6; // in mm
-const int n_clusters_to_gen = 200; // Number of clusters in this "event"
+const int n_clusters_to_gen = 10; // Number of clusters in this "event"
 const float noise_prob = 0.2; // 0 -1, 1 is max noise
 const float noise_level = 1; // in ADC units (pre integration)
 const float strip_pitch = 3.2; // digitize strip pitch
@@ -27,6 +28,8 @@ TF1 * fClusterProfile = nullptr;
 
 using namespace std;
 map<string, TH1*> hist;
+
+TGraph * hit_graph = new TGraph();
 
 bool in_bounds( float x, float y ){
     if ( x>0 && x < pent_nib && y < pent_base && y > 0 )
@@ -90,7 +93,7 @@ int map_to_local_strip( float x, float y, int &sx, int &sy ){
     return q;
 }
 
-int stripGroup( int sx, int sy ){
+int strip_group( int sx, int sy ){
     if ( (sx < 55 && sy < 150) || sy >= 150 ) return 0;
     if ( (sx < 110 && sy < 95) || sy >= 95 ) return 1;
     return 2;
@@ -126,15 +129,30 @@ void fill_cluster_GEN( float x, float y ){
 
             map_to_local_strip( bcx, bcy, sx, sy );
             string hname = TString::Format( "hDIG1L%d", q ).Data();
-            int xG = stripGroup( sx, sy );
-            int yG = stripGroup( sy, sx ); // not a typo, just reuse function with rotation
+            int xG = strip_group( sx, sy );
+            int yG = strip_group( sy, sx ); // not a typo, just reuse function with rotation
             if ( hist.count( hname ) > 0 ){
                 ((TH2*)hist[ hname ]) -> Fill( sx, sy, v );
+
+                // HORIZONTAL Strips
                 hname = TString::Format( "hDIG1L%dhG%d", q, xG ).Data();
                 ((TH2*)hist[ hname ]) -> Fill( sx, sy, v );
+                    // local position
+                hname = TString::Format( "hDIG1pL%dhG%d", q, xG ).Data();
+                ((TH2*)hist[ hname ]) -> Fill( bcx, bcy, v );
+                    // generator level
+                hname = TString::Format( "hGEN1pL%dhG%d", q, xG ).Data();
+                ((TH2*)hist[ hname ]) -> Fill( x, y, v );
 
+                // VERTICAL Strips
                 hname = TString::Format( "hDIG1L%dvG%d", q, yG ).Data();
                 ((TH2*)hist[ hname ]) -> Fill( sx, sy, v );
+                    // local position
+                hname = TString::Format( "hDIG1pL%dvG%d", q, yG ).Data();
+                ((TH2*)hist[ hname ]) -> Fill( bcx, bcy, v );
+                    // generator level
+                hname = TString::Format( "hGEN1pL%dvG%d", q, yG ).Data();
+                ((TH2*)hist[ hname ]) -> Fill( x, y, v );
             }
 
         }
@@ -149,18 +167,53 @@ void saturate( TH1 * h ){
     }
 }
 
+void make_1d( string base, int iMod, int iG, string md="" ){
+
+    // HORIZONTAL
+    string n = TString::Format( "%sL%dvG%d", md.c_str(), iMod, iG ).Data();
+
+    hist[ (base + "2" + n) ] -> Add( hist[(base + "0" + n)] );
+    hist[ (base + "2" + n) ] -> Add( hist[(base + "1" + n)] );
+            // Project to 1D
+    hist[ (base + "3" + n) ] = ((TH2*)hist[ (base + "2" + n) ])->ProjectionY( (base + "3" + n).c_str() );
+
+    // VERTICAL
+    n = TString::Format( "%sL%dvG%d", md.c_str(), iMod, iG ).Data();
+
+    hist[ (base + "2" + n) ] -> Add( hist[(base + "0" + n)] );
+    hist[ (base + "2" + n) ] -> Add( hist[(base + "1" + n)] );
+            // Project to 1D
+    hist[ (base + "3" + n) ] = ((TH2*)hist[ (base + "2" + n) ])->ProjectionX( (base + "3" + n).c_str() );
+            
+            
+            // apply saturation on final ADC (maybe not a good approximation)
+    // hist[ (base + "4" + n) ] = (TH1*)hist[ (base + "3" + n) ]->Clone( (base + "4" + n).c_str() );
+    // saturate( hist[ ("h" + base + "4" + n) ] );
+}
+
+
 int main( int argc, char** argv ){
 
     loguru::init(argc, argv);
+
+    string output_name = "output.root";
+    string log_name = "everything.log";
+
+    if (argc >= 2) 
+        output_name = string( argv[1] );
+    if (argc >= 3) 
+        log_name = string( argv[2] );
+    
     // loguru::g_stderr_verbosity = 8;
-    loguru::add_file("everything.log", loguru::Truncate, loguru::Verbosity_MAX);
+    loguru::add_file( log_name.c_str() , loguru::Truncate, loguru::Verbosity_MAX);
+
+    LOG_F( INFO, "Writing: ROOT: %s, LOG: %s", output_name.c_str(), log_name.c_str() );
 
     LOG_SCOPE_FUNCTION( INFO );
 
     gRandom = new TRandom3();
 
     
-
     hist["hquad1"] = new TH2F( "hquad1", ";x;y", 600, 0, 600, 600, 0, 600 );
     hist["hstgc"] = new TH2F( "hstgc", ";x;y", 1400, -700, 700, 1200, -600, 600 );
 
@@ -177,11 +230,27 @@ int main( int argc, char** argv ){
             hist[n] = new TH2F( n.c_str(), TString::Format("Module %d;local strip x; local strip y", iMod), 200, 0, 200, 200, 0, 200 );
             for ( int ixG = 0; ixG < 3; ixG++ ){
                 string n = TString::Format( "hDIG%dL%dhG%d", i, iMod, ixG ).Data();
-                hist[n] = new TH2F( n.c_str(), TString::Format("Module %d stripGroup %d;local strip x; local strip y", iMod, ixG), 200, 0, 200, 200, 0, 200 );
+                hist[n] = new TH2F( n.c_str(), TString::Format("Module %d strip_group %d;local strip x; local strip y", iMod, ixG), 200, 0, 200, 200, 0, 200 );
+
+                n = TString::Format( "hDIG%dpL%dhG%d", i, iMod, ixG ).Data();
+                hist[n] = new TH2F( n.c_str(), TString::Format("Module %d strip_group %d;local x; local y", iMod, ixG), 170, 0, strip_pitch * 170, 170, 0, strip_pitch * 170 );
+
+                // GENERATOR LEVEL
+                n = TString::Format( "hGEN%dpL%dhG%d", i, iMod, ixG ).Data();
+                hist[n] = new TH2F( n.c_str(), TString::Format("Module %d strip_group %d;local strip x; local strip y", iMod, ixG), 170, 0, strip_pitch * 170, 170, 0, strip_pitch * 170 );
+                
             }
             for ( int iyG = 0; iyG < 3; iyG++ ){
                 string n = TString::Format( "hDIG%dL%dvG%d", i, iMod, iyG ).Data();
                 hist[n] = new TH2F( n.c_str(), TString::Format("Module %d yGroup %d;local strip x; local strip y", iMod, iyG), 200, 0, 200, 200, 0, 200 );
+
+                n = TString::Format( "hDIG%dpL%dvG%d", i, iMod, iyG ).Data();
+                hist[n] = new TH2F( n.c_str(), TString::Format("Module %d yGroup %d;local x; local y", iMod, iyG), 170, 0, strip_pitch * 170, 170, 0, strip_pitch * 170 );
+
+                // GENERATOR LEVEL
+                n = TString::Format( "hGEN%dpL%dvG%d", i, iMod, iyG ).Data();
+                hist[n] = new TH2F( n.c_str(), TString::Format("Module %d strip_group %d;local strip x; local strip y", iMod, iyG), 170, 0, strip_pitch * 170, 170, 0, strip_pitch * 170 );
+                
             }
         }
     }
@@ -215,8 +284,8 @@ int main( int argc, char** argv ){
                 int q = map_to_local_strip( rx, ry, sx, sy );
                 string hname = TString::Format( "hDIG0L%d", q ).Data();
 
-                int xG = stripGroup( sx, sy );
-                int yG = stripGroup( sy, sx ); // not a typo, just reuse function with rotation
+                int xG = strip_group( sx, sy );
+                int yG = strip_group( sy, sx ); // not a typo, just reuse function with rotation
 
                 if ( hist.count( hname ) > 0 ){
                     ((TH2*)hist[ hname ]) -> Fill( sx, sy, nv );
@@ -224,8 +293,15 @@ int main( int argc, char** argv ){
                     hname = TString::Format( "hDIG0L%dhG%d", q, xG ).Data();
                     ((TH2*)hist[ hname ]) -> Fill( sx, sy, nv );
 
+                    hname = TString::Format( "hDIG0pL%dhG%d", q, xG ).Data();
+                    ((TH2*)hist[ hname ]) -> Fill( rx, ry, nv );
+
                     hname = TString::Format( "hDIG0L%dvG%d", q, yG ).Data();
                     ((TH2*)hist[ hname ]) -> Fill( sx, sy, nv );
+
+                    hname = TString::Format( "hDIG0pL%dvG%d", q, yG ).Data();
+                    ((TH2*)hist[ hname ]) -> Fill( rx, ry, nv );
+
                 }
             }
         }
@@ -240,6 +316,7 @@ int main( int argc, char** argv ){
         if ( in_bounds_quad( rx, ry ) > 0 ){
             ((TH2*)hist["hGEN0"])->Fill( rx, ry, 1 );
             fill_cluster_GEN( rx, ry );
+            hit_graph->SetPoint(nClusters, rx, ry);
             nClusters++;
         }
     }
@@ -258,27 +335,18 @@ int main( int argc, char** argv ){
         hist[ ("hDIG2" + n) ] -> Add( hist[("hDIG1" + n)] );
 
         for ( int iG = 0; iG < 3; iG++ ){
-            string n = TString::Format( "L%dhG%d", iMod, iG ).Data();
-            hist[ ("hDIG2" + n) ] -> Add( hist[("hDIG0" + n)] );
-            hist[ ("hDIG2" + n) ] -> Add( hist[("hDIG1" + n)] );
-            // DIIG3 is 1D and DIG4 is saturated
-            hist[ ("hDIG3" + n) ] = ((TH2*)hist[ ("hDIG2" + n) ])->ProjectionY( ("hDIG3" + n).c_str() );
+            // HORIZONTAL 
+                // local position
+            // string n = TString::Format( "pL%dhG%d", iMod, iG ).Data();
+            make_1d( "hDIG", iMod, iG );
+            make_1d( "hDIG", iMod, iG, "p" );
 
-            hist[ ("hDIG4" + n) ] = (TH1*)hist[ ("hDIG3" + n) ]->Clone( ("hDIG4" + n).c_str() );
-            saturate( hist[ ("hDIG4" + n) ] );
-
-            n = TString::Format( "L%dvG%d", iMod, iG ).Data();
-            hist[ ("hDIG2" + n) ] -> Add( hist[("hDIG0" + n)] );
-            hist[ ("hDIG2" + n) ] -> Add( hist[("hDIG1" + n)] );
-            hist[ ("hDIG3" + n) ] = ((TH2*)hist[ ("hDIG2" + n) ])->ProjectionX( ("hDIG3" + n).c_str() );
-
-            hist[ ("hDIG4" + n) ] = (TH1*)hist[ ("hDIG3" + n) ]->Clone( ("hDIG4" + n).c_str() );
-            saturate( hist[ ("hDIG4" + n) ] );
+            make_1d( "hGEN", iMod, iG, "p" );
         }
     }
 
 
-    TFile * fout = new TFile( "output.root", "RECREATE" );
+    TFile * fout = new TFile( output_name.c_str(), "RECREATE" );
     fout->cd();
 
     for ( auto nh : hist ){
@@ -288,7 +356,8 @@ int main( int argc, char** argv ){
 
 
     fClusterProfile->Write();
-
+    hit_graph->SetName( "hitGraph" );
+    hit_graph->Write();
     fout->Write();
     fout->Close();
 

@@ -1,5 +1,9 @@
-OBJS = stgc.o
-EXE = sim
+
+SIM_OBJS = stgc.o
+SIM_EXE = sim
+
+FIN_OBJS = finder.o
+FIN_EXE = finder
 
 ROOTCFLAGS    = $(shell root-config --cflags)
 ROOTLIBS      = $(shell root-config --libs) -lMathMore
@@ -13,10 +17,14 @@ FLAGS = -std=c++11 -fno-inline -Wall -g $(INCFLAGS) $(LDFLAGS)
 
 COMPILE = $(CXX) $(FLAGS) -c 
 
-all: $(EXE)
+all: $(SIM_EXE) $(FIN_EXE)
 
-$(EXE): $(OBJS)
-	$(CXX) -fno-inline -Wl -lpthread -o $(EXE) $(OBJS) $(ROOTFLAGS) $(ROOTLIBS)
+$(SIM_EXE): $(SIM_OBJS)
+	$(CXX) -fno-inline -Wl -lpthread -o $(SIM_EXE) $(SIM_OBJS) $(ROOTFLAGS) $(ROOTLIBS)
+$(FIN_EXE): $(FIN_OBJS)
+	$(CXX) -fno-inline -Wl -lpthread -o $(FIN_EXE) $(FIN_OBJS) $(ROOTFLAGS) $(ROOTLIBS)
+
+
 %.o: %.cpp
 	$(COMPILE)  $< 
 

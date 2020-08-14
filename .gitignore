@@ -3,3 +3,5 @@ everything.log
 *.o
 *.root
 *.png
+finder
+.DS_Store
