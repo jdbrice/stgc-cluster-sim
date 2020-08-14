@@ -28,10 +28,14 @@ Produces `output.root` that contains:
     - N=2 : noise + cluster
 - `hDIG{N}L{iMod}` - for module iMod = 1, 2, 3, 4 (top right, top left, bottom left, bottom right)
 - `hDIG{N}L{iMod}hG{iG}` - projected 1D measurements for horizontal strips level
-    - N = 3 or 4 (3 is projection, 4 applies saturation)
+    - N = 3 or 4 (3 is projection, 4 applies saturation - removed for now)
     - iMod = module 1, 2, 3, 4 (see above)
     - iG = strip group 0, 1, 2
 - `hDIG{N}L{iMod}vG{iG}` - projected 1D measurements for vertical strips level
+- `hDIG{N}pL{iMod}hG{iG}` - projected 1D measurements for horizontal local position
+- `hDIG{N}pL{iMod}vG{iG}` - projected 1D measurements for vertical local position
+- `hGEN{N}pL{iMod}hG{iG}` - GEN LEVEL: projected 1D measurements for horizontal local position
+- `hGEN{N}pL{iMod}vG{iG}` - GEN LEVEL: projected 1D measurements for vertical local position
 
 
 
